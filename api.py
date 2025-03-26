@@ -1,33 +1,27 @@
 from flask import Flask, request, jsonify
-from PIL import Image
 import pytesseract
-from pdf2image import convert_from_path
+from pdf2image import convert_from_bytes
+from PIL import Image
+import io
 
 app = Flask(__name__)
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 
-@app.route('/ocr', methods=['POST'])
-def ocr():
+@app.route("/ocr", methods=["POST"])
+def ocr_pdf():
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['file']
+    pdf_bytes = file.read()
+
     try:
-        if 'file' not in request.files:
-            return jsonify({"error": "No file uploaded"}), 400
-
-        file = request.files['file']
-        file.save('temp_file.pdf')
-
-        if file.filename.endswith('.pdf'):
-            images = convert_from_path('temp_file.pdf', dpi=300)
-            extracted_text = ""
-            for image in images:
-                extracted_text += pytesseract.image_to_string(image) + "\n"
-        else:
-            image = Image.open('temp_file.pdf')
-            extracted_text = pytesseract.image_to_string(image)
-
-        return jsonify({"text": extracted_text}), 200
-
+        images = convert_from_bytes(pdf_bytes)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"PDF conversion failed: {str(e)}"}), 500
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    extracted_text = ""
+    for i, img in enumerate(images):
+        text = pytesseract.image_to_string(img)
+        extracted_text += text + "\n---PAGE BREAK---\n"
+
+    return jsonify({"text": extracted_text})
